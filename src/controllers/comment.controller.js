@@ -24,22 +24,27 @@ const getVideoComments = asyncHandler(async (req, res) => {
       },
     },
     {
-      $group: {
-        _id: "$owner",
-        totalComment: { $sum: 1 },
-        comments: { $push: "$content" },
+      $lookup: {
+        from: "users",
+        localField: "owner",
+        foreignField: "_id",
+        as: "owner",
       },
     },
     {
-      $sort: {
-        createdAt: -1,
+      $unwind: "$owner",
+    },
+    {
+      $group: {
+        _id: null,
+        totalComments: { $sum: 1 },
+        comments: { $push: { content: "$content", owner: "$owner" } },
       },
     },
     {
       $project: {
         _id: 0,
-        owner: "$_id",
-        totalComment: 1,
+        totalComments: 1,
         comments: 1,
       },
     },
@@ -64,7 +69,6 @@ const getVideoComments = asyncHandler(async (req, res) => {
 
 const addComment = asyncHandler(async (req, res) => {
   // TODO: add a comment to a video
-
   try {
     const { videoId } = req.params;
     const { content } = req.body;
@@ -84,7 +88,9 @@ const addComment = asyncHandler(async (req, res) => {
       content: content,
       owner: req.user._id,
     });
-
+    if (!comment) {
+      return res.status(500).json(new ApiError(500, "Cannot add comment"));
+    }
     return res
       .status(201)
       .json(new ApiResponse(201, comment, "Comment added successfully"));
