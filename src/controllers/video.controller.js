@@ -1,47 +1,166 @@
-import mongoose, {isValidObjectId} from "mongoose"
-import {Video} from "../models/video.model.js"
-import {User} from "../models/user.model.js"
-import {ApiError} from "../utils/ApiError.js"
-import {ApiResponse} from "../utils/ApiResponse.js"
-import {asyncHandler} from "../utils/asyncHandler.js"
-import {uploadOnCloudinary} from "../utils/cloudinary.js"
-
+import mongoose, { isValidObjectId } from "mongoose";
+import { Video } from "../models/video.model.js";
+import { User } from "../models/user.model.js";
+import { ApiError } from "../utils/ApiError.js";
+import { ApiResponse } from "../utils/ApiResponse.js";
+import { asyncHandler } from "../utils/asyncHandler.js";
+import { uploadOnCloudinary } from "../utils/cloudinary.js";
 
 const getAllVideos = asyncHandler(async (req, res) => {
-    const { page = 1, limit = 10, query, sortBy, sortType, userId } = req.query
-    //TODO: get all videos based on query, sort, pagination
-})
+  const { page = 1, limit = 10, query, sortBy, sortType, userId } = req.query;
+  //TODO: get all videos based on query, sort, pagination
+  const options = {
+    page: Number(page),
+    limit: Number(limit),
+  };
+  const aggregateVideos = Video.aggregate([
+    {
+      $match: {
+        $or: [
+          { title: { $regex: query, $options: "i" } },
+          { description: { $regex: query, $options: "i" } },
+        ],
+      },
+    },
+    {
+      $lookup: {
+        from: "users",
+        localField: "owner",
+        foreignField: "_id",
+        as: "owner",
+      },
+    },
+    {
+      $unwind: "$owner",
+    },
+    {
+      $project: {
+        _id: 1,
+        title: 1,
+        description: 1,
+        thumbnail: 1,
+        views: 1,
+        duration: 1,
+        createdAt: 1,
+        updatedAt: 1,
+        isPublished: 1,
+        owner: {
+          _id: "$owner._id",
+          name: "$owner.name",
+          avatar: "$owner.avatar",
+        },
+      },
+    },
+  ]);
+  const videos = await Video.aggregatePaginate(aggregateVideos, options);
+  if (!videos) {
+    return res.status(404).json(new ApiError(404, "No videos found"));
+  }
+  return res.status(200).json(new ApiResponse(200, videos, "Videos fetched"));
+});
 
 const publishAVideo = asyncHandler(async (req, res) => {
-    const { title, description} = req.body
-    // TODO: get video, upload to cloudinary, create video
-})
+  const { title, description } = req.body;
+  // TODO: get video, upload to cloudinary, create video
+  if (!title || !description) {
+    return res
+      .status(400)
+      .json(new ApiError(400, "Title and description are required"));
+  }
+  if (!req.user || !req.user._id) {
+    return res.status(401).json(new ApiError(401, "User is not authenticated"));
+  }
+  const video = await Video.create({
+    title,
+    description,
+    isPublished: true,
+    owner: req.user._id,
+  });
+  if (!video) {
+    return res.status(400).json(new ApiError(400, "Video cannot be created"));
+  }
+  return res.status(201).json(new ApiResponse(201, video, "Video created"));
+});
 
 const getVideoById = asyncHandler(async (req, res) => {
-    const { videoId } = req.params
-    //TODO: get video by id
-})
+  const { videoId } = req.params;
+  //TODO: get video by id
+});
 
 const updateVideo = asyncHandler(async (req, res) => {
-    const { videoId } = req.params
-    //TODO: update video details like title, description, thumbnail
-
-})
+  const { videoId } = req.params;
+  //TODO: update video details like title, description, thumbnail
+  if (!isValidObjectId(videoId)) {
+    return res.status(400).json(new ApiError(400, "Invalid video ID"));
+  }
+  if (!req.user || !req.user._id) {
+    return res.status(401).json(new ApiError(401, "User is not authenticated"));
+  }
+  const videoExists = await Video.exists({ _id: videoId });
+  if (!videoExists) {
+    return res.status(404).json(new ApiError(404, "Video not found"));
+  }
+  const video = await Video.findOneAndUpdate(
+    { _id: videoId },
+    { $set: req.body },
+    { new: true }
+  );
+  if (!video) {
+    return res.status(400).json(new ApiError(400, "Video cannot be updated"));
+  }
+  return res.status(200).json(new ApiResponse(200, video, "Video updated"));
+});
 
 const deleteVideo = asyncHandler(async (req, res) => {
-    const { videoId } = req.params
-    //TODO: delete video
-})
+  const { videoId } = req.params;
+  //TODO: delete video
+  if (!isValidObjectId(videoId)) {
+    return res.status(400).json(new ApiError(400, "Invalid video ID"));
+  }
+  if (!req.user || !req.user._id) {
+    return res.status(401).json(new ApiError(401, "User is not authenticated"));
+  }
+  const videoExists = await Video.exists({ _id: videoId });
+  if (!videoExists) {
+    return res.status(404).json(new ApiError(404, "Video not found"));
+  }
+  const video = await Video.findOneAndDelete({ _id: videoId });
+  if (!video) {
+    return res.status(400).json(new ApiError(400, "Video cannot be deleted"));
+  }
+  return res.status(200).json(new ApiResponse(200, null, "Video deleted"));
+});
 
 const togglePublishStatus = asyncHandler(async (req, res) => {
-    const { videoId } = req.params
-})
+  const { videoId } = req.params;
+  //TODO: toggle publish status
+  if (!isValidObjectId(videoId)) {
+    return res.status(400).json(new ApiError(400, "Invalid video ID"));
+  }
+  if (!req.user || !req.user._id) {
+    return res.status(401).json(new ApiError(401, "User is not authenticated"));
+  }
+  const videoExists = await Video.exists({ _id: videoId });
+  if (!videoExists) {
+    return res.status(404).json(new ApiError(404, "Video not found"));
+  }
+  const video = await Video.findOneAndUpdate(
+    { _id: videoId },
+    { $set: { isPublished: !req.body.isPublished } },
+    { new: true }
+  );
+  if (!video) {
+    return res
+      .status(400)
+      .json(new ApiError(400, "Video cannot be updated"));
+  }
+});
 
 export {
-    getAllVideos,
-    publishAVideo,
-    getVideoById,
-    updateVideo,
-    deleteVideo,
-    togglePublishStatus
-}
+  getAllVideos,
+  publishAVideo,
+  getVideoById,
+  updateVideo,
+  deleteVideo,
+  togglePublishStatus,
+};
