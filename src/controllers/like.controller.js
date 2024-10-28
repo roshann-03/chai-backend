@@ -36,7 +36,7 @@ const toggleVideoLike = asyncHandler(async (req, res) => {
         video: videoId,
         likedBy: req.user._id,
       });
-      return res.status(200).json(new ApiResponse(200, "Like removed"));
+      return res.status(200).json(new ApiResponse(200, null, "Like removed"));
     }
   } catch (error) {
     console.error(error);
@@ -77,7 +77,7 @@ const toggleCommentLike = asyncHandler(async (req, res) => {
         comment: commentId,
         likedBy: req.user._id,
       });
-      return res.status(200).json(new ApiResponse(200, "Like removed"));
+      return res.status(200).json(new ApiResponse(200, null, "Like removed"));
     }
   } catch (error) {
     console.error(error);
@@ -118,7 +118,7 @@ const toggleTweetLike = asyncHandler(async (req, res) => {
         tweet: tweetId,
         likedBy: req.user._id,
       });
-      return res.status(200).json(new ApiResponse(200, "Like removed"));
+      return res.status(200).json(new ApiResponse(200, null, "Like removed"));
     }
   } catch (error) {
     console.error(error);
