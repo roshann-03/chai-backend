@@ -62,16 +62,13 @@ const getAllVideos = asyncHandler(async (req, res) => {
 const publishAVideo = asyncHandler(async (req, res) => {
   const { title, description } = req.body;
   // TODO: get video, upload to cloudinary, create video
-  if (!title || !description) {
-    return res
-      .status(400)
-      .json(new ApiError(400, "Title and description are required"));
+  if (!title) {
+    throw new ApiError(400, "Title and description are required");
   }
-  if (!req.user || !req.user._id) {
+  if (!req.user && !req.user._id) {
     return res.status(401).json(new ApiError(401, "User is not authenticated"));
   }
-
-  const videoLocalPath = req.files?.avatar[0]?.path;
+  const videoLocalPath = req.files?.videoFile[0]?.path;
   const thumbnailLocalPath = req.files?.thumbnail[0]?.path;
 
   if (!videoLocalPath && !thumbnailLocalPath) {
@@ -83,12 +80,12 @@ const publishAVideo = asyncHandler(async (req, res) => {
   if (!uploadedVideo && !uploadedVideoThumbnail) {
     throw new ApiError(400, "Video file and thumbnail is required");
   }
-
   const video = await Video.create({
     videoFile: uploadedVideo?.secure_url,
     thumbnail: uploadedVideoThumbnail?.secure_url,
     title,
-    description,
+    description: description || "",
+    duration: uploadedVideo?.duration,
     isPublished: true,
     owner: req.user._id,
   });
@@ -124,9 +121,27 @@ const updateVideo = asyncHandler(async (req, res) => {
   if (!videoExists) {
     return res.status(404).json(new ApiError(404, "Video not found"));
   }
+  const thumbnailLocalPath = req.file?.path;
+  if (!thumbnailLocalPath) {
+    throw new ApiError(
+      400,
+      "thumbnailLocalPath Error: Thumbnail file is required"
+    );
+  }
+  const updateVideoThumbnail = await uploadOnCloudinary(thumbnailLocalPath);
+  if (!updateVideoThumbnail) {
+    throw new ApiError(400, "Video file and thumbnail is required");
+  }
   const video = await Video.findOneAndUpdate(
     { _id: videoId },
-    { $set: req.body },
+    {
+      $set: {
+        thumbnail: updateVideoThumbnail?.secure_url,
+        title: req.body?.title,
+        description: req.body?.description,
+        isPublished: req.body?.isPublished,
+      },
+    },
     { new: true }
   );
   if (!video) {
@@ -156,25 +171,45 @@ const deleteVideo = asyncHandler(async (req, res) => {
 });
 
 const togglePublishStatus = asyncHandler(async (req, res) => {
-  const { videoId } = req.params;
-  //TODO: toggle publish status
-  if (!isValidObjectId(videoId)) {
-    return res.status(400).json(new ApiError(400, "Invalid video ID"));
-  }
-  if (!req.user || !req.user._id) {
-    return res.status(401).json(new ApiError(401, "User is not authenticated"));
-  }
-  const videoExists = await Video.exists({ _id: videoId });
-  if (!videoExists) {
-    return res.status(404).json(new ApiError(404, "Video not found"));
-  }
-  const video = await Video.findOneAndUpdate(
-    { _id: videoId },
-    { $set: { isPublished: !req.body.isPublished } },
-    { new: true }
-  );
-  if (!video) {
-    return res.status(400).json(new ApiError(400, "Video cannot be updated"));
+  try {
+    const { videoId } = req.params;
+    //TODO: toggle publish status
+    if (!isValidObjectId(videoId)) {
+      return res.status(400).json(new ApiError(400, "Invalid video ID"));
+    }
+    if (!req.user || !req.user._id) {
+      return res
+        .status(401)
+        .json(new ApiError(401, "User is not authenticated"));
+    }
+    const videoExists = await Video.exists({ _id: videoId });
+    if (!videoExists) {
+      return res.status(404).json(new ApiError(404, "Video not found"));
+    }
+    const video = await Video.findOneAndUpdate(
+      { _id: videoId },
+      [
+        {
+          $set: {
+            isPublished: {
+              $cond: [{ $eq: ["$isPublished", true] }, false, true],
+            },
+          },
+        },
+      ],
+      { new: true }
+    );
+    if (!video) {
+      return res.status(400).json(new ApiError(400, "Video cannot be updated"));
+    }
+    return res.status(200).json(new ApiResponse(200, video, "Video updated"));
+  } catch (error) {
+    console.error(error);
+    return res
+      .status(500)
+      .json(
+        new ApiError(500, "Internal server error while video toggle publish")
+      );
   }
 });
 
