@@ -70,7 +70,23 @@ const publishAVideo = asyncHandler(async (req, res) => {
   if (!req.user || !req.user._id) {
     return res.status(401).json(new ApiError(401, "User is not authenticated"));
   }
+
+  const videoLocalPath = req.files?.avatar[0]?.path;
+  const thumbnailLocalPath = req.files?.thumbnail[0]?.path;
+
+  if (!videoLocalPath && !thumbnailLocalPath) {
+    throw new ApiError(400, "videoLocalPath Error: Video file is required");
+  }
+  const uploadedVideo = await uploadOnCloudinary(videoLocalPath);
+  const uploadedVideoThumbnail = await uploadOnCloudinary(thumbnailLocalPath);
+
+  if (!uploadedVideo && !uploadedVideoThumbnail) {
+    throw new ApiError(400, "Video file and thumbnail is required");
+  }
+
   const video = await Video.create({
+    videoFile: uploadedVideo?.secure_url,
+    thumbnail: uploadedVideoThumbnail?.secure_url,
     title,
     description,
     isPublished: true,
@@ -85,6 +101,14 @@ const publishAVideo = asyncHandler(async (req, res) => {
 const getVideoById = asyncHandler(async (req, res) => {
   const { videoId } = req.params;
   //TODO: get video by id
+  if (!isValidObjectId(videoId)) {
+    return res.status(400).json(new ApiError(400, "Invalid video ID"));
+  }
+  const video = await Video.findOne({ _id: videoId });
+  if (!video) {
+    return res.status(404).json(new ApiError(404, "Video not found"));
+  }
+  return res.status(200).json(new ApiResponse(200, video, "Video fetched"));
 });
 
 const updateVideo = asyncHandler(async (req, res) => {
@@ -150,9 +174,7 @@ const togglePublishStatus = asyncHandler(async (req, res) => {
     { new: true }
   );
   if (!video) {
-    return res
-      .status(400)
-      .json(new ApiError(400, "Video cannot be updated"));
+    return res.status(400).json(new ApiError(400, "Video cannot be updated"));
   }
 });
 
