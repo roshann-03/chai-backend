@@ -20,7 +20,7 @@ const getVideoComments = asyncHandler(async (req, res) => {
   const pageAggregate = Comment.aggregate([
     {
       $match: {
-        video: mongoose.Types.ObjectId(videoId),
+        video: new mongoose.Types.ObjectId(videoId),
       },
     },
     {
@@ -35,18 +35,18 @@ const getVideoComments = asyncHandler(async (req, res) => {
       $unwind: "$owner",
     },
     {
-      $group: {
-        _id: null,
-        totalComments: { $sum: 1 },
-        comments: { $push: { content: "$content", owner: "$owner" } },
+      $project: {
+        content: "$content",
+        owner: {
+          _id: "$owner._id",
+          username: "$owner.username",
+          avatar: "$owner.avatar",
+        },
+        createdAt: 1,
       },
     },
     {
-      $project: {
-        _id: 0,
-        totalComments: 1,
-        comments: 1,
-      },
+      $sample: { size: 10 },
     },
   ]);
 

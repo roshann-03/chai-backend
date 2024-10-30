@@ -7,21 +7,34 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
 
 const getAllVideos = asyncHandler(async (req, res) => {
-  const { page = 1, limit = 10, query, sortBy, sortType, userId } = req.query;
-  //TODO: get all videos based on query, sort, pagination
+  const {
+    page = 1,
+    limit = 10,
+    query,
+    sortBy = "createdAt",
+    sortType = "desc",
+    userId,
+  } = req.query;
+
+  // Validate pagination options
   const options = {
     page: Number(page),
     limit: Number(limit),
   };
+
+  // Prepare regex query if query exists
+  let matchStage = {};
+  if (query && typeof query === "string" && query.trim()) {
+    matchStage = {
+      $or: [
+        { title: { $regex: query.trim(), $options: "i" } },
+        { description: { $regex: query.trim(), $options: "i" } },
+      ],
+    };
+  }
+
   const aggregateVideos = Video.aggregate([
-    {
-      $match: {
-        $or: [
-          { title: { $regex: query, $options: "i" } },
-          { description: { $regex: query, $options: "i" } },
-        ],
-      },
-    },
+    { $match: matchStage },
     {
       $lookup: {
         from: "users",
@@ -30,14 +43,13 @@ const getAllVideos = asyncHandler(async (req, res) => {
         as: "owner",
       },
     },
-    {
-      $unwind: "$owner",
-    },
+    { $unwind: "$owner" },
     {
       $project: {
         _id: 1,
         title: 1,
         description: 1,
+        videoFile: 1,
         thumbnail: 1,
         views: 1,
         duration: 1,
@@ -46,17 +58,29 @@ const getAllVideos = asyncHandler(async (req, res) => {
         isPublished: 1,
         owner: {
           _id: "$owner._id",
-          name: "$owner.name",
+          name: "$owner.username",
           avatar: "$owner.avatar",
         },
       },
     },
+    // Sort stage
+    {
+      $sort: {
+        [sortBy]: sortType === "asc" ? 1 : -1, // Ascending or Descending
+      },
+    },
   ]);
+
+  // Paginate the results
   const videos = await Video.aggregatePaginate(aggregateVideos, options);
-  if (!videos) {
+
+  if (!videos || videos.length === 0) {
     return res.status(404).json(new ApiError(404, "No videos found"));
   }
-  return res.status(200).json(new ApiResponse(200, videos, "Videos fetched"));
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, videos, "Videos fetched successfully"));
 });
 
 const publishAVideo = asyncHandler(async (req, res) => {
@@ -65,9 +89,10 @@ const publishAVideo = asyncHandler(async (req, res) => {
   if (!title) {
     throw new ApiError(400, "Title and description are required");
   }
-  if (!req.user && !req.user._id) {
+  if (!req?.user && !req?.user._id) {
     return res.status(401).json(new ApiError(401, "User is not authenticated"));
   }
+  console.log(req.user);
   const videoLocalPath = req.files?.videoFile[0]?.path;
   const thumbnailLocalPath = req.files?.thumbnail[0]?.path;
 
@@ -97,15 +122,66 @@ const publishAVideo = asyncHandler(async (req, res) => {
 
 const getVideoById = asyncHandler(async (req, res) => {
   const { videoId } = req.params;
-  //TODO: get video by id
-  if (!isValidObjectId(videoId)) {
+  // Validate video ID
+  if (!mongoose.Types.ObjectId.isValid(videoId)) {
     return res.status(400).json(new ApiError(400, "Invalid video ID"));
   }
-  const video = await Video.findOne({ _id: videoId });
-  if (!video) {
+
+  const video = await Video.aggregate([
+    {
+      $match: {
+        _id: new mongoose.Types.ObjectId(videoId),
+      },
+    },
+    {
+      $lookup: {
+        from: "users",
+        localField: "owner",
+        foreignField: "_id",
+        as: "owner",
+      },
+    },
+    {
+      $unwind: "$owner",
+    },
+    {
+      $lookup: {
+        from: "subscriptions", // subscriptions collection
+        localField: "owner._id", // Match with the owner's ID
+        foreignField: "channel", // Match with the channel field in subscriptions
+        as: "subscribers", // Store results in this field
+      },
+    },
+    {
+      $project: {
+        _id: 1,
+        title: 1,
+        description: 1,
+        videoFile: 1,
+        thumbnail: 1,
+        views: 1,
+        duration: 1,
+        createdAt: 1,
+        updatedAt: 1,
+        isPublished: 1,
+        owner: {
+          _id: "$owner._id",
+          name: "$owner.username",
+          avatar: "$owner.avatar",
+        },
+        subscriberCount: { $size: "$subscribers" }, // Count of subscribers
+      },
+    },
+    {
+      $limit: 1,
+    },
+  ]);
+
+  if (!video || video.length === 0) {
     return res.status(404).json(new ApiError(404, "Video not found"));
   }
-  return res.status(200).json(new ApiResponse(200, video, "Video fetched"));
+
+  return res.status(200).json(new ApiResponse(200, video[0], "Video fetched"));
 });
 
 const updateVideo = asyncHandler(async (req, res) => {
@@ -213,6 +289,18 @@ const togglePublishStatus = asyncHandler(async (req, res) => {
   }
 });
 
+const getAllVideosById = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+  if (!isValidObjectId(userId)) {
+    return res.status(400).json(new ApiError(400, "Invalid user ID"));
+  }
+  const video = await Video.find({ owner: userId });
+  if (!video) {
+    return res.status(404).json(new ApiError(404, "Video not found"));
+  }
+  return res.status(200).json(new ApiResponse(200, video, "Video fetched"));
+});
+
 export {
   getAllVideos,
   publishAVideo,
@@ -220,4 +308,5 @@ export {
   updateVideo,
   deleteVideo,
   togglePublishStatus,
+  getAllVideosById,
 };

@@ -9,6 +9,7 @@ const toggleSubscription = asyncHandler(async (req, res) => {
   try {
     const { channelId } = req.params;
     // TODO: toggle subscription
+
     if (!channelId) {
       return res.status(400).json(new ApiError(400, "channelId required"));
     }
@@ -19,7 +20,7 @@ const toggleSubscription = asyncHandler(async (req, res) => {
       return res.status(401).json(new ApiError(401, "User is Unauthorized"));
     }
 
-    const channelExists = await Subscription.exists({ _id: channelId });
+    const channelExists = await User.exists({ _id: channelId });
     if (!channelExists) {
       return res.status(404).json(new ApiError(404, "Channel not found"));
     }
@@ -97,7 +98,6 @@ const getUserChannelSubscribers = asyncHandler(async (req, res) => {
 const getSubscribedChannels = asyncHandler(async (req, res) => {
   const { subscriberId } = req.params;
   try {
-    const { subscriberId } = req.params;
     // TODO: toggle subscription
     if (!subscriberId) {
       return res.status(400).json(new ApiError(400, "subscriberId required"));
