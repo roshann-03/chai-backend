@@ -71,13 +71,17 @@ const toggleCommentLike = asyncHandler(async (req, res) => {
         comment: commentId,
         likedBy: req.user._id,
       });
-      return res.status(200).json(new ApiResponse(200, liked, "Comment liked"));
+      return res
+        .status(200)
+        .json(new ApiResponse(200, { liked, isLiked: true }, "Comment liked"));
     } else {
       await Like.findOneAndDelete({
         comment: commentId,
         likedBy: req.user._id,
       });
-      return res.status(200).json(new ApiResponse(200, null, "Like removed"));
+      return res
+        .status(200)
+        .json(new ApiResponse(200, { isLiked: false }, "Like removed"));
     }
   } catch (error) {
     console.error(error);

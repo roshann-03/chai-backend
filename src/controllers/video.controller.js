@@ -92,7 +92,6 @@ const publishAVideo = asyncHandler(async (req, res) => {
   if (!req?.user && !req?.user._id) {
     return res.status(401).json(new ApiError(401, "User is not authenticated"));
   }
-  console.log(req.user);
   const videoLocalPath = req.files?.videoFile[0]?.path;
   const thumbnailLocalPath = req.files?.thumbnail[0]?.path;
 
@@ -126,7 +125,7 @@ const getVideoById = asyncHandler(async (req, res) => {
   if (!mongoose.Types.ObjectId.isValid(videoId)) {
     return res.status(400).json(new ApiError(400, "Invalid video ID"));
   }
-
+  await Video.findByIdAndUpdate(videoId, { $inc: { views: 1 } });
   const video = await Video.aggregate([
     {
       $match: {
@@ -153,6 +152,14 @@ const getVideoById = asyncHandler(async (req, res) => {
       },
     },
     {
+      $lookup: {
+        from: "likes", // likes collection
+        localField: "_id", // Match with the video ID
+        foreignField: "video", // Match with the video field in likes
+        as: "likes", // Store results in this field
+      },
+    },
+    {
       $project: {
         _id: 1,
         title: 1,
@@ -160,6 +167,9 @@ const getVideoById = asyncHandler(async (req, res) => {
         videoFile: 1,
         thumbnail: 1,
         views: 1,
+        likes: {
+          $size: "$likes",
+        },
         duration: 1,
         createdAt: 1,
         updatedAt: 1,
@@ -294,11 +304,65 @@ const getAllVideosById = asyncHandler(async (req, res) => {
   if (!isValidObjectId(userId)) {
     return res.status(400).json(new ApiError(400, "Invalid user ID"));
   }
-  const video = await Video.find({ owner: userId });
+
+  const video = await Video.find({ owner: userId }).populate(
+    "owner",
+    "-password -refreshToken"
+  );
+
   if (!video) {
     return res.status(404).json(new ApiError(404, "Video not found"));
   }
   return res.status(200).json(new ApiResponse(200, video, "Video fetched"));
+});
+
+const getLikesByVideoId = asyncHandler(async (req, res) => {
+  const { videoId } = req.params;
+  try {
+    // Validate video ID
+    if (!mongoose.Types.ObjectId.isValid(videoId)) {
+      return res.status(400).json(new ApiError(400, "Invalid video ID"));
+    }
+    const video = await Video.aggregate([
+      {
+        $match: {
+          _id: new mongoose.Types.ObjectId(videoId),
+        },
+      },
+      {
+        $lookup: {
+          from: "likes", // likes collection
+          localField: "_id", // Match with the video ID
+          foreignField: "video", // Match with the video field in likes
+          as: "likes", // Store results in this field
+        },
+      },
+      {
+        $project: {
+          _id: 1,
+          likes: {
+            $size: "$likes",
+          },
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      },
+      {
+        $limit: 1,
+      },
+    ]);
+
+    if (!video || video.length === 0) {
+      return res.status(404).json(new ApiError(404, "Video not found"));
+    }
+
+    return res
+      .status(200)
+      .json(new ApiResponse(200, video[0], "Video fetched"));
+  } catch (error) {
+    console.log(error);
+    res.status(500).json(new ApiError(500, "Internal server error"));
+  }
 });
 
 export {
@@ -309,4 +373,5 @@ export {
   deleteVideo,
   togglePublishStatus,
   getAllVideosById,
+  getLikesByVideoId,
 };

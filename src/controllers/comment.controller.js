@@ -6,7 +6,7 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 
 const getVideoComments = asyncHandler(async (req, res) => {
   const { videoId } = req.params;
-  console.log(videoId);
+
   const { page = 1, limit = 10 } = req.query;
 
   if (!videoId) {
@@ -45,9 +45,6 @@ const getVideoComments = asyncHandler(async (req, res) => {
         createdAt: 1,
       },
     },
-    {
-      $sample: { size: 10 },
-    },
   ]);
 
   const pageOptions = {
@@ -57,10 +54,16 @@ const getVideoComments = asyncHandler(async (req, res) => {
 
   try {
     const result = await Comment.aggregatePaginate(pageAggregate, pageOptions);
-    console.log(result);
+
+
+    if (!result) {
+      return res.status(404).json(new ApiError(404, "Comments not found"));
+    }
     return res
       .status(200)
-      .json(new ApiResponse(200, result, "Comments fetched successfully"));
+      .json(
+        new ApiResponse(200, result, "Comments fetched successfully")
+      );
   } catch (error) {
     console.error(error);
     return res.status(500).json(new ApiError(500, "Cannot fetch comments"));
@@ -122,6 +125,7 @@ const updateComment = asyncHandler(async (req, res) => {
       { content: content },
       { new: true }
     );
+
     if (!updatedComment) {
       return res.status(404).json(new ApiError(404, "Comment not found"));
     }

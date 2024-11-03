@@ -42,7 +42,6 @@ const registerUser = asyncHandler(async (req, res) => {
       .json(new ApiError(409, "User with email or username already exists"));
   }
 
-
   const avatarLocalPath = req.files?.avatar[0]?.path;
   //const coverImageLocalPath = req.files?.coverImage[0]?.path;
   let coverImageLocalPath;
@@ -81,51 +80,52 @@ const registerUser = asyncHandler(async (req, res) => {
 });
 
 const loginUser = asyncHandler(async (req, res) => {
-  // req body -> data
-  // username or email
-  //find the user
-  //password check
-  //access and referesh token
-  //send cookie
-
-  const { email, username, password } = req.body;
-
-  if (!(username || email)) {
+  const { emailOrUsername, email, username, password } = req.body;
+  // Ensure at least one identifier is provided
+  if (!emailOrUsername) {
     return res
       .status(400)
-      .json(new ApiError(400, "username or email is required"));
+      .json(new ApiError(400, "Username or email is required"));
   }
 
-  // Here is an alternative of above code based on logic discussed in video:
-  // if (!(username || email)) {
-  //     throw new ApiError(400, "username or email is required")
+  // Normalize email for case-insensitivity
+  const normalizedEmailOrUsername = emailOrUsername
+    ? emailOrUsername.toLowerCase()
+    : null;
 
-  // }
-
+  // Find user by email or username
   const user = await User.findOne({
-    $or: [{ username }, { email }],
+    $or: [
+      { email: normalizedEmailOrUsername },
+      { username: normalizedEmailOrUsername },
+    ],
   });
+
   if (!user) {
     throw new ApiError(404, "User does not exist");
   }
 
+  // Validate password
   const isPasswordValid = await user.isPasswordCorrect(password);
 
   if (!isPasswordValid) {
     throw new ApiError(401, "Invalid user credentials");
   }
 
+  // Generate tokens
   const { accessToken, refreshToken } = await generateAccessAndRefereshTokens(
     user._id
   );
 
+  // Select user data excluding password and refreshToken
   const loggedInUser = await User.findById(user._id).select(
     "-password -refreshToken"
   );
 
+  // Set cookie options
   const options = {
     httpOnly: true,
-    secure: true,
+    secure: true, // Set to false if not using HTTPS during development
   };
 
   return res
@@ -140,7 +140,7 @@ const loginUser = asyncHandler(async (req, res) => {
           accessToken,
           refreshToken,
         },
-        "User logged In Successfully"
+        "User logged in successfully"
       )
     );
 });
@@ -245,7 +245,7 @@ const getCurrentUser = asyncHandler(async (req, res) => {
 
 const updateAccountDetails = asyncHandler(async (req, res) => {
   const { fullName, email } = req.body;
-
+  
   if (!fullName || !email) {
     throw new ApiError(400, "All fields are required");
   }
